@@ -2,7 +2,11 @@ import chokidar from "chokidar";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import type { MoltbotConfig, ConfigFileSnapshot, GatewayReloadMode } from "../config/config.js";
-import { getActiveAgentRunCount, onAgentRunComplete } from "../infra/agent-events.js";
+import {
+  getActiveAgentRunCount,
+  getActiveAgentRunIds,
+  onAgentRunComplete,
+} from "../infra/agent-events.js";
 
 export type GatewayReloadSettings = {
   mode: GatewayReloadMode;
@@ -311,8 +315,9 @@ export function startGatewayConfigReloader(opts: {
         if (!restartQueued) {
           const activeRunCount = getActiveAgentRunCount();
           if (activeRunCount > 0) {
+            const runIds = getActiveAgentRunIds();
             opts.log.warn(
-              `config change requires gateway restart, but deferring (${activeRunCount} active agent run${activeRunCount === 1 ? "" : "s"})`,
+              `config change requires gateway restart, but deferring (${activeRunCount} active agent run${activeRunCount === 1 ? "" : "s"}: ${runIds.join(", ")})`,
             );
             restartQueued = true;
             queuedPlan = plan;
@@ -336,8 +341,9 @@ export function startGatewayConfigReloader(opts: {
         if (!restartQueued) {
           const activeRunCount = getActiveAgentRunCount();
           if (activeRunCount > 0) {
+            const runIds = getActiveAgentRunIds();
             opts.log.warn(
-              `config change requires gateway restart, but deferring (${activeRunCount} active agent run${activeRunCount === 1 ? "" : "s"})`,
+              `config change requires gateway restart, but deferring (${activeRunCount} active agent run${activeRunCount === 1 ? "" : "s"}: ${runIds.join(", ")})`,
             );
             restartQueued = true;
             queuedPlan = plan;

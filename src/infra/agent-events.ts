@@ -1,5 +1,14 @@
 import type { VerboseLevel } from "../auto-reply/thinking.js";
 
+// Simple logger for agent events diagnostics
+const agentLog = {
+  debug: (msg: string) => {
+    if (process.env.DEBUG?.includes("agent") || process.env.DEBUG === "*") {
+      console.debug(`[agent] ${msg}`);
+    }
+  },
+};
+
 export type AgentEventStream = "lifecycle" | "tool" | "assistant" | "error" | (string & {});
 
 export type AgentEventPayload = {
@@ -28,6 +37,7 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   const existing = runContextById.get(runId);
   if (!existing) {
     runContextById.set(runId, { ...context });
+    agentLog.debug(`agent run registered: ${runId} (total active: ${runContextById.size})`);
     return;
   }
   if (context.sessionKey && existing.sessionKey !== context.sessionKey) {
@@ -46,7 +56,11 @@ export function getAgentRunContext(runId: string) {
 }
 
 export function clearAgentRunContext(runId: string) {
+  const existed = runContextById.has(runId);
   runContextById.delete(runId);
+  if (existed) {
+    agentLog.debug(`agent run cleared: ${runId} (remaining active: ${runContextById.size})`);
+  }
   // Notify callbacks that a run has completed
   for (const callback of runCompletionCallbacks) {
     try {

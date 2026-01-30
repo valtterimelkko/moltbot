@@ -28,25 +28,33 @@
 
 ## Module 1: Enhanced Logging & Diagnostics
 
-**Status:** NOT_STARTED
-**Assigned to:** (blank)
-**Start Date:** (blank)
-**PR:** (blank)
+**Status:** COMPLETE
+**Assigned to:** Code Agent
+**Start Date:** 2026-01-30
+**PR:** (pending)
 
 ### Implementation Checklist
-- [ ] 1.1 Config write source logging in `src/config/io.ts`
-- [ ] 1.2 Deferred restart logging in `src/gateway/config-reload.ts`
-- [ ] 1.3 Agent lifecycle logging in `src/infra/agent-events.ts`
-- [ ] 1.4 SIGUSR1 signal logging in `src/gateway/server-reload-handlers.ts`
+- [x] 1.1 Config write source logging in `src/config/io.ts`
+- [x] 1.2 Deferred restart logging in `src/gateway/config-reload.ts`
+- [x] 1.3 Agent lifecycle logging in `src/infra/agent-events.ts`
+- [x] 1.4 SIGUSR1 signal logging in `src/gateway/server-reload-handlers.ts`
 
 ### Issues
-(Record problems here as encountered)
+None encountered.
 
 ### Solutions
-(Document fixes as discovered)
+- Fixed TypeScript build error: `deps.logger` only has `error` and `warn` methods, not `info`. Changed to use `console.info()` directly for config write logging.
 
 ### Notes
-(Any relevant observations or context)
+- All 4 logging enhancements implemented successfully.
+- Build completed without errors.
+- All tests passed (793 test files, 4838 tests).
+- New logging will help identify:
+  - Source of config writes (stack trace)
+  - Active agent runs during config writes
+  - Agent run registration/clearing lifecycle
+  - Deferred restart decisions with run IDs
+  - SIGUSR1 signal emission with active run context
 
 ---
 

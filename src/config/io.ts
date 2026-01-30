@@ -11,6 +11,7 @@ import {
   shouldDeferShellEnvFallback,
   shouldEnableShellEnvFallback,
 } from "../infra/shell-env.js";
+import { getActiveAgentRunCount } from "../infra/agent-events.js";
 import { DuplicateAgentDirError, findDuplicateAgentDirs } from "./agent-dirs.js";
 import {
   applyCompactionDefaults,
@@ -461,6 +462,15 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
 
   async function writeConfigFile(cfg: MoltbotConfig) {
     clearConfigCache();
+
+    // Log config write source and active runs for diagnostics
+    const writeSource = new Error().stack?.split("\n")[2]?.trim() || "unknown";
+    const activeRuns = getActiveAgentRunCount();
+    console.info(`[config] writing config file (source: ${writeSource})`);
+    if (activeRuns > 0) {
+      deps.logger.warn(`[config] config write attempted with ${activeRuns} active agent run(s)`);
+    }
+
     const validated = validateConfigObjectWithPlugins(cfg);
     if (!validated.ok) {
       const issue = validated.issues[0];

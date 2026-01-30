@@ -7,6 +7,7 @@ import {
   authorizeGatewaySigusr1Restart,
   setGatewaySigusr1RestartPolicy,
 } from "../infra/restart.js";
+import { getActiveAgentRunCount, getActiveAgentRunIds } from "../infra/agent-events.js";
 import { setCommandLaneConcurrency } from "../process/command-queue.js";
 import { resolveAgentMaxConcurrent, resolveSubagentMaxConcurrent } from "../config/agent-limits.js";
 import { CommandLane } from "../process/lanes.js";
@@ -149,6 +150,13 @@ export function createGatewayReloadHandlers(params: {
       ? plan.restartReasons.join(", ")
       : plan.changedPaths.join(", ");
     params.logReload.warn(`config change requires gateway restart (${reasons})`);
+
+    const activeRuns = getActiveAgentRunCount();
+    const runIds = getActiveAgentRunIds();
+    params.logReload.warn(
+      `emitting SIGUSR1 for gateway restart (active runs: ${activeRuns}${activeRuns > 0 ? `, runIds: ${runIds.join(", ")}` : ""})`,
+    );
+
     if (process.listenerCount("SIGUSR1") === 0) {
       params.logReload.warn("no SIGUSR1 listener found; restart skipped");
       return;
