@@ -126,6 +126,10 @@ skills/global-skills
 **/.DS_Store
 Thumbs.db
 
+# Claude Code Local Settings
+.claude/
+.claude/settings.json
+
 # Package Manager Locks (use source control for dependency pinning)
 pnpm-lock.yaml
 bun.lock
