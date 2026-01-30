@@ -357,6 +357,9 @@ async function runExecProcess(opts: {
   onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
 }): Promise<ExecProcessHandle> {
   const startedAt = Date.now();
+  // DEBUG: Log the command being executed immediately to stderr
+  process.stderr.write(`[DEBUG EXEC] Starting exec tool with command: ${opts.command}\n`);
+
   const sessionId = createSessionSlug();
   let child: ChildProcessWithoutNullStreams | null = null;
   let pty: PtyHandle | null = null;
