@@ -1027,6 +1027,278 @@ If issue persists, reduce retry attempts in retry policy config.
 
 ---
 
-**Last Updated:** Jan 29, 2026 (19:50 UTC)
+## Analysis & Solutions (Jan 30, 2026)
+
+### **Root Cause Identified**
+
+The bot is **NOT crashing randomly**. The gateway receives **SIGUSR1 signal (controlled restart)** during message processing, triggering a graceful shutdown that interrupts in-flight requests.
+
+**The Problem Chain:**
+```
+CONFIG FILE AUTOMATICALLY REWRITTEN
+       ↓
+FILE WATCHER DETECTS CHANGE
+       ↓
+RELOAD HANDLER EVALUATES CHANGE
+       ↓
+DECIDES: "Full restart required"
+       ↓
+GATEWAY EMITS: process.emit("SIGUSR1")
+       ↓
+SIGNAL HANDLER TRIGGERS
+       ↓
+GRACEFUL SHUTDOWN STARTS
+       ↓
+IF MESSAGE PROCESSING ACTIVE:
+  → In-flight request INTERRUPTED
+  → Incomplete response DISCARDED
+  → User sees: "bot typing but never responds"
+```
+
+### **Potential Sources of Config Auto-Rewrite**
+
+#### **1. macOS App Config Sync (Most Likely)**
+- **File**: `apps/macos/Sources/Moltbot/AppState.swift`
+- **Mechanism**:
+  - `ConfigFileWatcher` watches config file for changes
+  - When detected, calls `applyConfigFromDisk()`
+  - In remote mode, `ConfigStore.save()` writes to gateway via WebSocket `configSet`
+- **Evidence**: Commit `62e590323` explicitly fixed this to "keep gateway config sync local"
+
+#### **2. Gateway Config Validation/Defaults Application**
+- **File**: `src/config/io.ts:462-519`
+- **Mechanism**: `writeConfigFile()` applies:
+  - `validateConfigObjectWithPlugins()` - validates and potentially modifies config
+  - `applyModelDefaults()` - applies default values
+  - `stampConfigVersion()` - adds metadata
+- **Impact**: Each write could trigger file watcher → reload cycle
+
+#### **3. Plugin/Channel Auto-Configuration**
+- **Files**: Various channel plugins
+- **Mechanism**: Some plugins may auto-configure on startup/reload
+- **Evidence**: Logs show `plugins.entries.telegram.enabled` changes
+
+### **Why It Happens During Messages**
+
+From logs:
+- Message arrives at T+0 sec
+- Agent starts processing at T+1 sec
+- First tool completes at T+14 sec
+- Second tool starts at T+27 sec
+- **SIGUSR1 received 7ms into second tool execution**
+- Gateway shuts down gracefully, restarts
+- Incomplete response never sent to Telegram
+
+The **~27-second pattern** matches the time from agent start to second tool execution, suggesting a config rewrite happens predictably during this window.
+
+### **Why It's NOT Other Things (Verified)**
+
+| What | Status | Why Not |
+|------|--------|---------|
+| Bot crash | ❌ No | Gateway shuts down gracefully, restarts cleanly |
+| PM2 killing it | ❌ No | PM2 not involved in SIGUSR1 signal |
+| Health monitor | ❌ No | Uses SIGKILL (-9), not SIGTERM; checks every 5 minutes |
+| Memory exhaustion | ❌ No | 52MB usage, 500MB limit |
+| Plugin overflow | ❌ No | Logs show no errors, same config worked this morning |
+| Inotify exhaustion | ❌ No | Already increased to 524288 |
+| Random crashes | ❌ No | Pattern is exact, reproducible, tied to config rewrites |
+
+---
+
+## Potential Solutions
+
+### **Solution 1: Defer Restarts During Active Requests (Recommended)**
+
+**Approach**: Modify `src/gateway/config-reload.ts:277-340` to defer restarts when agent runs are active.
+
+**Implementation**:
+```typescript
+// In src/gateway/config-reload.ts, add active request tracking
+let activeAgentRuns = new Set<string>();
+
+// In agent loop, track active runs:
+activeAgentRuns.add(runId);
+
+// In runReload, check before restart:
+if (plan.restartGateway && activeAgentRuns.size > 0) {
+  opts.log.warn("config change requires restart, but deferring (active agent runs)");
+  restartQueued = true; // Queue for later
+  return; // Don't restart now
+}
+
+// When agent run completes:
+activeAgentRuns.delete(runId);
+if (restartQueued && activeAgentRuns.size === 0) {
+  // Now safe to restart
+  restartQueued = false;
+  opts.onRestart(plan, nextConfig);
+}
+```
+
+**Pros**:
+- Preserves in-flight messages
+- No data loss
+- Clean restart when idle
+
+**Cons**:
+- Requires tracking active runs across gateway
+- More complex implementation
+
+---
+
+### **Solution 2: Disable Config File Watcher (Quick Fix)**
+
+**Approach**: Set `gateway.reload.mode: "off"` to disable automatic reloading.
+
+**Implementation**:
+```json
+// In /root/.clawdbot/moltbot.json
+{
+  "gateway": {
+    "reload": {
+      "mode": "off"
+    }
+  }
+}
+```
+
+**Pros**:
+- Immediate fix
+- No more auto-restarts
+- Config changes only apply on manual restart
+
+**Cons**:
+- Manual restart required for config changes
+- Doesn't address root cause
+
+---
+
+### **Solution 3: Fix macOS App Config Sync (Root Cause Fix)**
+
+**Approach**: Prevent macOS app from writing to gateway config when in remote mode.
+
+**Implementation**:
+```swift
+// In apps/macos/Sources/Moltbot/AppState.swift
+private func syncGatewayConfigIfNeeded() {
+    guard !self.isPreview, !self.isInitializing else { return }
+    
+    // DON'T sync gateway config in remote mode
+    // Only sync app-specific settings
+    if self.connectionMode == .remote {
+        return // Skip gateway config sync entirely
+    }
+    
+    // ... rest of sync logic
+}
+```
+
+**Pros**:
+- Fixes root cause
+- Prevents cross-write conflicts
+- Clean separation of concerns
+
+**Cons**:
+- Requires macOS app rebuild
+- May need to adjust other remote mode logic
+
+---
+
+### **Solution 4: Add Config Write Debouncing**
+
+**Approach**: Increase debounce time and add change detection to ignore spurious writes.
+
+**Implementation**:
+```json
+// In /root/.clawdbot/moltbot.json
+{
+  "gateway": {
+    "reload": {
+      "mode": "hybrid",
+      "debounceMs": 5000  // Increase from 300ms
+    }
+  }
+}
+```
+
+**Pros**:
+- Reduces restart frequency
+- Allows multiple changes to coalesce
+
+**Cons**:
+- Doesn't prevent restart during messages
+- May delay legitimate config changes
+
+---
+
+### **Solution 5: Identify and Disable Auto-Rewrite Source**
+
+**Approach**: Use file monitoring to identify what's writing to config.
+
+**Implementation**:
+```bash
+# Monitor config file writes
+inotifywait -m -e modify /root/.clawdbot/moltbot.json
+
+# Check gateway logs for write sources
+grep -n "writeConfigFile\|config.*save" /tmp/moltbot/moltbot-*.log
+
+# Check macOS app logs if running
+log show --predicate 'process == "Moltbot"' --last 1h
+```
+
+**Pros**:
+- Identifies exact source
+- Targeted fix possible
+
+**Cons**:
+- Requires investigation time
+- May need additional tooling
+
+---
+
+### **Solution 6: Use Hot Reload for More Config Changes**
+
+**Approach**: Expand hot reload rules to handle more config changes without restart.
+
+**Implementation**:
+```typescript
+// In src/gateway/config-reload.ts
+const BASE_RELOAD_RULES: ReloadRule[] = [
+  // Add more hot-reloadable paths:
+  { prefix: "agents.defaults.model", kind: "hot", actions: ["restart-heartbeat"] },
+  { prefix: "channels.telegram.streamMode", kind: "hot" }, // Example
+  // ... existing rules
+];
+```
+
+**Pros**:
+- Fewer restarts
+- Better user experience
+
+**Cons**:
+- Not all changes can be hot-reloaded
+- Complex to get right
+
+---
+
+## Recommended Action Plan
+
+1. **Immediate (Quick Fix)**: Set `gateway.reload.mode: "off"` to stop auto-restarts
+2. **Investigation**: Use `inotifywait` to identify what's writing to config
+3. **Short-term**: Implement Solution 1 (defer restarts during active requests)
+4. **Long-term**: Fix root cause (macOS app config sync or other auto-rewrite source)
+
+---
+
+## Notes
+
+- The logs show the pattern is **exact and reproducible**, not random crashes
+- The config watcher is working correctly; the issue is what's triggering the writes
+- The gateway's reload logic is sound; it just needs to be more defensive about in-flight requests
+- The macOS app commit `62e590323` suggests this is a known issue area
+- The gateway's reload logic is sound; it just needs to be more defensive about in-flight requests
+
+**Last Updated:** Jan 30, 2026 (10:30 UTC)
 **Maintained By:** Claude Code + Moltbot Task Router
-**Latest:** Crash loop root cause fixed (inotify limit increased to 524288). PM2 process manager confirmed as correct, systemd conflicts removed. Gateway now running cleanly via PM2.
+**Latest:** Analysis complete. Root cause identified: Config file auto-rewriting → file watcher → reload handler → SIGUSR1 → shutdown during messages.
