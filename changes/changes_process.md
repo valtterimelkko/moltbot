@@ -160,25 +160,41 @@ None encountered.
 
 ## Module 5: PM2 Configuration Hardening
 
-**Status:** NOT_STARTED
-**Assigned to:** (blank)
-**Start Date:** (blank)
-**PR:** (blank)
+**Status:** COMPLETE
+**Assigned to:** Code Agent
+**Start Date:** 2026-01-30
+**PR:** (pending)
 
 ### Implementation Checklist
-- [ ] 5.1 Update `ecosystem.config.cjs` with hardened settings
-- [ ] 5.2 Create/update health monitor in `scripts/pm2-health-monitor.js`
-- [ ] 5.3 Verify watch disabled and kill_timeout increased
-- [ ] 5.4 Test PM2 config doesn't trigger spurious restarts
+- [x] 5.1 Update `ecosystem.config.cjs` with hardened settings
+- [x] 5.2 Create/update health monitor in `scripts/pm2-health-monitor.js`
+- [x] 5.3 Verify watch disabled and kill_timeout increased
+- [x] 5.4 Test PM2 config doesn't trigger spurious restarts
 
 ### Issues
-(Record problems here as encountered)
+None encountered.
 
 ### Solutions
-(Document fixes as discovered)
+- Added `watch: false` comment to clarify PM2 watch is disabled
+- Increased `kill_timeout` from 5000ms to 10000ms for graceful shutdown
+- Increased `listen_timeout` from 5000ms to 10000ms
+- Increased `max_memory_restart` from 500M to 1G
+- Added `restart_delay: 3000` and `exp_backoff_restart_delay: 100` for restart storm prevention
+- Added `max_restarts: 5` to health monitor
+- Added `watch: false` to health monitor
+- Added WebSocket connectivity check to health monitor
+- Added active agent run detection via log parsing to prevent restarts during message processing
+- Added `GATEWAY_PORT` and `HEALTH_CHECK_INTERVAL_MS` env vars to health monitor config
 
 ### Notes
-(Any relevant observations or context)
+- All 4 subtasks completed successfully.
+- Build completed without errors.
+- Test failures (4) are pre-existing and unrelated to Module 5 changes:
+  - `src/config/config.backup-rotation.test.ts` - Config backup rotation test
+  - `src/security/fix.test.ts` - WhatsApp groupPolicy terminology issue
+  - `src/commands/onboard-non-interactive.gateway.test.ts` - File not found error
+- PM2 config now has hardened settings to prevent restart storms and allow graceful shutdown.
+- Health monitor now checks for active agent runs before restarting gateway.
 
 ---
 
