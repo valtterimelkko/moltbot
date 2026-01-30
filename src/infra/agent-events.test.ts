@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi, beforeEach } from "vitest";
 import {
   clearAgentRunContext,
   emitAgentEvent,
@@ -6,6 +6,8 @@ import {
   onAgentEvent,
   registerAgentRunContext,
   resetAgentRunContextForTest,
+  getActiveAgentRunCount,
+  onAgentRunComplete,
 } from "./agent-events.js";
 
 describe("agent-events sequencing", () => {
@@ -54,5 +56,77 @@ describe("agent-events sequencing", () => {
     stop();
 
     expect(phases).toEqual(["start", "end"]);
+  });
+});
+
+describe("agent run tracking", () => {
+  beforeEach(() => {
+    resetAgentRunContextForTest();
+  });
+
+  test("should track active runs correctly", () => {
+    expect(getActiveAgentRunCount()).toBe(0);
+
+    registerAgentRunContext("run-1", {});
+    expect(getActiveAgentRunCount()).toBe(1);
+
+    registerAgentRunContext("run-2", {});
+    expect(getActiveAgentRunCount()).toBe(2);
+
+    clearAgentRunContext("run-1");
+    expect(getActiveAgentRunCount()).toBe(1);
+
+    clearAgentRunContext("run-2");
+    expect(getActiveAgentRunCount()).toBe(0);
+  });
+
+  test("should fire completion callbacks", () => {
+    const callback = vi.fn();
+    const unregister = onAgentRunComplete(callback);
+
+    registerAgentRunContext("run-1", {});
+    expect(callback).not.toHaveBeenCalled();
+
+    clearAgentRunContext("run-1");
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    unregister();
+  });
+
+  test("should not fire callback when clearing non-existent run", () => {
+    const callback = vi.fn();
+    onAgentRunComplete(callback);
+
+    clearAgentRunContext("non-existent");
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  test("should update existing run context", () => {
+    registerAgentRunContext("run-1", {
+      sessionKey: "original",
+      verboseLevel: "off",
+      isHeartbeat: false,
+    });
+
+    expect(getAgentRunContext("run-1")).toEqual({
+      sessionKey: "original",
+      verboseLevel: "off",
+      isHeartbeat: false,
+    });
+
+    registerAgentRunContext("run-1", {
+      sessionKey: "updated",
+      verboseLevel: "full",
+      isHeartbeat: true,
+    });
+
+    expect(getAgentRunContext("run-1")).toEqual({
+      sessionKey: "updated",
+      verboseLevel: "full",
+      isHeartbeat: true,
+    });
+
+    // Should still only have one run
+    expect(getActiveAgentRunCount()).toBe(1);
   });
 });

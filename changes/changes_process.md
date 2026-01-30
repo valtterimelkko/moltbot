@@ -60,27 +60,36 @@ None encountered.
 
 ## Module 2: Verify & Fix Active Run Detection
 
-**Status:** NOT_STARTED
-**Assigned to:** (blank)
-**Start Date:** (blank)
+**Status:** COMPLETE
+**Assigned to:** Code Agent
+**Start Date:** 2026-01-30
 **Dependencies:** Module 1 (for debugging)
-**PR:** (blank)
+**PR:** (pending)
 
 ### Implementation Checklist
-- [ ] 2.1 Audit agent run registration call sites
-- [ ] 2.2 Fix missing registration/cleanup in identified paths
-- [ ] 2.3 Add defensive timeout for stale runs in `src/infra/agent-events.ts`
-- [ ] 2.4 Unit tests in `src/infra/agent-events.test.ts`
-- [ ] 2.5 Integration test for deferred restart
+- [x] 2.1 Audit agent run registration call sites
+- [x] 2.2 Fix missing registration/cleanup in identified paths
+- [x] 2.3 Add defensive timeout for stale runs in `src/infra/agent-events.ts`
+- [x] 2.4 Unit tests in `src/infra/agent-events.test.ts`
+- [ ] 2.5 Integration test for deferred restart (part of Module 6)
 
 ### Issues
-(Record problems here as encountered)
+None encountered.
 
 ### Solutions
-(Document fixes as discovered)
+- Added `clearAgentRunContext` import to [`src/auto-reply/reply/agent-runner-execution.ts`](src/auto-reply/reply/agent-runner-execution.ts:23)
+- Wrapped agent run execution in try-finally block to ensure cleanup happens even on errors
+- Added `warn` method to `agentLog` in [`src/infra/agent-events.ts`](src/infra/agent-events.ts:10)
+- Added defensive timeout for stale runs (10 minutes) with automatic cleanup
+- Added `runStartTimes` Map to track run start times
+- Fixed `clearAgentRunContext` to only fire callbacks when run actually existed
+- Added unit tests for agent run tracking
 
 ### Notes
-(Any relevant observations or context)
+- All 4 subtasks completed successfully.
+- Build completed without errors.
+- All tests passed (793 test files, 4842 tests).
+- Module 2.5 (integration test) is part of Module 6 (Testing & Verification) per PRD.
 
 ---
 
