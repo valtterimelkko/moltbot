@@ -45,7 +45,7 @@ type ReloadAction =
 
 const DEFAULT_RELOAD_SETTINGS: GatewayReloadSettings = {
   mode: "hybrid",
-  debounceMs: 300,
+  debounceMs: 2000, // Increased from 300ms to handle atomic write patterns
 };
 
 const BASE_RELOAD_RULES: ReloadRule[] = [
@@ -370,8 +370,12 @@ export function startGatewayConfigReloader(opts: {
 
   const watcher = chokidar.watch(opts.watchPath, {
     ignoreInitial: true,
-    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
-    usePolling: Boolean(process.env.VITEST),
+    awaitWriteFinish: {
+      stabilityThreshold: 2000, // Wait for file size to stabilize (2 seconds)
+      pollInterval: 100,
+    },
+    usePolling: Boolean(process.env.VITEST) || Boolean(process.env.MOLTBOT_USE_POLLING),
+    interval: 1000, // Polling interval if usePolling enabled
   });
 
   watcher.on("add", schedule);

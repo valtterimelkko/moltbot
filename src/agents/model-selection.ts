@@ -3,7 +3,7 @@ import type { ModelCatalogEntry } from "./model-catalog.js";
 import { normalizeGoogleModelId } from "./models-config.providers.js";
 import { resolveAgentModelPrimary } from "./agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
-import { resolveModelForAgentWithTaskRouting, type TaskType } from "./task-type-router.js";
+import { resolveModelForAgentWithTaskRouting } from "./task-type-router.js";
 
 export type ModelRef = {
   provider: string;

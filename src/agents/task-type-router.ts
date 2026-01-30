@@ -93,7 +93,7 @@ export function detectTaskType(userMessage: string): TaskType {
 /**
  * Map task types to optimal models based on your LLM strategy
  */
-export function resolveModelForTaskType(taskType: TaskType, cfg: MoltbotConfig): ModelRef | null {
+export function resolveModelForTaskType(taskType: TaskType, _cfg: MoltbotConfig): ModelRef | null {
   // Define the optimal model mapping based on your strategy
   const TASK_TYPE_MODEL_MAPPING: Record<TaskType, string> = {
     "file-analysis": "openrouter/google/gemini-2.0-flash", // 1M context for spatial reasoning

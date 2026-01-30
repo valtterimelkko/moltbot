@@ -118,6 +118,51 @@ describe("resolveGatewayReloadSettings", () => {
   it("uses defaults when unset", () => {
     const settings = resolveGatewayReloadSettings({});
     expect(settings.mode).toBe("hybrid");
-    expect(settings.debounceMs).toBe(300);
+    expect(settings.debounceMs).toBe(2000); // Updated default from 300ms to 2000ms
+  });
+
+  it("respects custom debounceMs from config", () => {
+    const settings = resolveGatewayReloadSettings({
+      gateway: {
+        reload: {
+          debounceMs: 5000,
+        },
+      },
+    });
+    expect(settings.mode).toBe("hybrid");
+    expect(settings.debounceMs).toBe(5000);
+  });
+
+  it("clamps negative debounceMs to 0", () => {
+    const settings = resolveGatewayReloadSettings({
+      gateway: {
+        reload: {
+          debounceMs: -100,
+        },
+      },
+    });
+    expect(settings.debounceMs).toBe(0);
+  });
+
+  it("clamps decimal debounceMs to integer", () => {
+    const settings = resolveGatewayReloadSettings({
+      gateway: {
+        reload: {
+          debounceMs: 1234.56,
+        },
+      },
+    });
+    expect(settings.debounceMs).toBe(1234);
+  });
+
+  it("handles NaN debounceMs by using default", () => {
+    const settings = resolveGatewayReloadSettings({
+      gateway: {
+        reload: {
+          debounceMs: NaN,
+        },
+      },
+    });
+    expect(settings.debounceMs).toBe(2000); // Falls back to default
   });
 });

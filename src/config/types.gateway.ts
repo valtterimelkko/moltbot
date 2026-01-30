@@ -114,7 +114,7 @@ export type GatewayReloadMode = "off" | "restart" | "hot" | "hybrid";
 export type GatewayReloadConfig = {
   /** Reload strategy for config changes (default: hybrid). */
   mode?: GatewayReloadMode;
-  /** Debounce window for config reloads (ms). Default: 300. */
+  /** Debounce window for config reloads (ms). Default: 2000. */
   debounceMs?: number;
 };
 
