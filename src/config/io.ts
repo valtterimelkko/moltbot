@@ -61,6 +61,12 @@ const SHELL_ENV_EXPECTED_KEYS = [
 const CONFIG_BACKUP_COUNT = 5;
 const loggedInvalidConfigs = new Set<string>();
 
+// Config write rate limiting
+const WRITE_RATE_LIMIT_MS = 5000; // Max 1 write per 5 seconds
+let lastConfigWriteTime = 0;
+let pendingConfigWrite: NodeJS.Timeout | null = null;
+let lastConfigChecksum: string | null = null;
+
 export type ParseConfigJson5Result = { ok: true; parsed: unknown } | { ok: false; error: string };
 
 function hashConfigRaw(raw: string | null): string {
@@ -87,6 +93,11 @@ function coerceConfig(value: unknown): MoltbotConfig {
     return {};
   }
   return value as MoltbotConfig;
+}
+
+function calculateConfigChecksum(config: MoltbotConfig): string {
+  const normalized = JSON.stringify(config, Object.keys(config).sort());
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 async function rotateConfigBackups(configPath: string, ioFs: typeof fs.promises): Promise<void> {
@@ -463,10 +474,32 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
   async function writeConfigFile(cfg: MoltbotConfig) {
     clearConfigCache();
 
+    // Calculate checksum and skip write if unchanged
+    const checksum = calculateConfigChecksum(cfg);
+    if (checksum === lastConfigChecksum) {
+      console.debug(`[config] write skipped (checksum unchanged: ${checksum.slice(0, 8)}...)`);
+      return;
+    }
+
+    // Rate limiting: queue write if too soon
+    const now = Date.now();
+    const timeSinceLastWrite = now - lastConfigWriteTime;
+    if (timeSinceLastWrite < WRITE_RATE_LIMIT_MS) {
+      if (pendingConfigWrite) clearTimeout(pendingConfigWrite);
+      const delayMs = WRITE_RATE_LIMIT_MS - timeSinceLastWrite;
+      console.debug(`[config] write rate-limited; queuing (${delayMs}ms remaining)`);
+      pendingConfigWrite = setTimeout(() => {
+        void writeConfigFile(cfg);
+      }, delayMs);
+      return;
+    }
+
     // Log config write source and active runs for diagnostics
     const writeSource = new Error().stack?.split("\n")[2]?.trim() || "unknown";
     const activeRuns = getActiveAgentRunCount();
-    console.info(`[config] writing config file (source: ${writeSource})`);
+    console.info(
+      `[config] writing config file (checksum: ${checksum.slice(0, 8)}..., source: ${writeSource})`,
+    );
     if (activeRuns > 0) {
       deps.logger.warn(`[config] config write attempted with ${activeRuns} active agent run(s)`);
     }
@@ -525,6 +558,14 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         // best-effort
       });
       throw err;
+    }
+
+    // Update tracking after successful write
+    lastConfigWriteTime = now;
+    lastConfigChecksum = checksum;
+    if (pendingConfigWrite) {
+      clearTimeout(pendingConfigWrite);
+      pendingConfigWrite = null;
     }
   }
 
